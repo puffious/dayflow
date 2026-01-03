@@ -3,17 +3,32 @@ const router = express.Router();
 const supabase = require("../config/supabaseClient");
 
 // GET all employees
-router.get("/", async (req, res) => {
+router.get("/", async (_req, res) => {
   const { data, error } = await supabase.from("employees").select("*");
   if (error) return res.status(400).json({ error: error.message });
   res.json(data);
 });
 
-// POST create a new employee (and Auth user)
-router.post("/register", async (req, res) => {
+// GET current employee by email
+router.get("/me", async (req, res) => {
+  const email = req.query.email;
+  if (!email) return res.status(400).json({ error: "email query param is required" });
+
+  const { data, error } = await supabase
+    .from("employees")
+    .select("*")
+    .eq("email", email)
+    .single();
+
+  if (error) return res.status(404).json({ error: "Employee not found" });
+  res.json(data);
+});
+
+// POST create a new employee (used after Supabase signup)
+router.post("/", async (req, res) => {
   const {
+    user_id,
     email,
-    password,
     first_name,
     last_name,
     position,
@@ -21,20 +36,13 @@ router.post("/register", async (req, res) => {
     salary,
   } = req.body;
 
-  // 1. Create user in Supabase Auth
-  const { data: authData, error: authError } =
-    await supabase.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    });
+  if (!user_id || !email) {
+    return res.status(400).json({ error: "user_id and email are required" });
+  }
 
-  if (authError) return res.status(400).json({ error: authError.message });
-
-  // 2. Create profile in Employees table
   const { data, error } = await supabase.from("employees").insert([
     {
-      user_id: authData.user.id, // Link to auth user
+      user_id,
       email,
       first_name,
       last_name,

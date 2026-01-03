@@ -44,4 +44,5 @@ services:
 
 networks:
   dayflow-network:
-    driver: bridge
+    default: all
+    external: true

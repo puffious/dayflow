@@ -5,6 +5,7 @@ export const API_ENDPOINTS = {
   // Employees
   employees: `${API_BASE_URL}/api/employees`,
   employeeRegister: `${API_BASE_URL}/api/employees/register`,
+  employeeMe: (email: string) => `${API_BASE_URL}/api/employees/me?email=${encodeURIComponent(email)}`,
   employeeById: (id: string) => `${API_BASE_URL}/api/employees/${id}`,
   
   // Attendance

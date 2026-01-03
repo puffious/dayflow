@@ -16,6 +16,7 @@ export const employeeAPI = {
   getAll: () => api.get('/employees'),
   getById: (id: string) => api.get(`/employees/${id}`),
   register: (data: any) => api.post('/employees/register', data),
+  getMe: (email: string) => api.get(`/employees/me`, { params: { email } }),
   create: (data: any) => api.post('/employees', data),
   update: (id: string, data: any) => api.put(`/employees/${id}`, data),
   delete: (id: string) => api.delete(`/employees/${id}`),

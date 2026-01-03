@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { supabase } from '@/lib/supabaseClient';
-import { API_ENDPOINTS } from '@/lib/api';
+import { employeeAPI } from '@/lib/apiClient';
 
 interface User {
   id: string;
@@ -42,6 +42,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           setUser(session.user as User);
+          if (session.access_token) {
+            localStorage.setItem('auth_token', session.access_token);
+          }
           await fetchEmployeeDetails(session.user.email!);
         }
       } catch (error) {
@@ -56,10 +59,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user as User);
+        if (session.access_token) {
+          localStorage.setItem('auth_token', session.access_token);
+        }
         await fetchEmployeeDetails(session.user.email!);
       } else {
         setUser(null);
         setEmployeeDetails(null);
+        localStorage.removeItem('auth_token');
       }
       setLoading(false);
     });
@@ -69,26 +76,26 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchEmployeeDetails = async (email: string) => {
     try {
-      const response = await fetch(API_ENDPOINTS.employees);
-      if (!response.ok) throw new Error('Failed to fetch employees');
-      const employees = await response.json();
-      const currentEmployee = employees.find((emp: EmployeeDetails) => emp.email === email);
-      if (currentEmployee) {
-        setEmployeeDetails(currentEmployee);
-      }
+      const { data } = await employeeAPI.getMe(email);
+      setEmployeeDetails(data);
     } catch (error) {
       console.error('Error fetching employee details:', error);
+      setEmployeeDetails(null);
     }
   };
 
   const login = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    if (data.session?.access_token) {
+      localStorage.setItem('auth_token', data.session.access_token);
+    }
   };
 
   const logout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
+    localStorage.removeItem('auth_token');
   };
 
   const signup = async (email: string, password: string, firstName: string, lastName: string) => {
@@ -96,6 +103,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       email,
       password,
       options: {
+        emailRedirectTo: `${window.location.origin}`,
         data: { first_name: firstName, last_name: lastName }
       }
     });
@@ -104,17 +112,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     // Create employee record
     if (authData.user) {
-      const response = await fetch(API_ENDPOINTS.employees, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: authData.user.id,
-          email,
-          first_name: firstName,
-          last_name: lastName
-        })
+      await employeeAPI.create({
+        user_id: authData.user.id,
+        email,
+        first_name: firstName,
+        last_name: lastName,
       });
-      if (!response.ok) throw new Error('Failed to create employee record');
     }
   };
 
