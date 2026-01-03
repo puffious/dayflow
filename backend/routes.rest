@@ -1,0 +1,11 @@
+POST http://localhost:5000/api/employees/register
+Content-Type: application/json
+{
+    email: "john.doe@example.com",
+    password: "SecurePass123",
+    first_name: "John",
+    last_name: "Doe",
+    position: "Software Engineer",
+    department: "Engineering",
+    salary: 60000
+}
