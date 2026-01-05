@@ -22,7 +22,7 @@ export const API_ENDPOINTS = {
 };
 
 export const API_CONFIG = {
-  baseURL: API_BASE_URL,
+  baseURL: `${API_BASE_URL}/api`,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
