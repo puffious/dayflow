@@ -1,94 +1,126 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { CheckCircle, XCircle, Clock, Filter, Search } from "lucide-react";
+import { CheckCircle, XCircle, Clock, Filter, Search, Loader } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { useEffect, useState } from "react";
+import { leaveAPI } from "@/lib/apiClient";
 
-const leaveRequests = [
-  { 
-    id: 1,
-    employee: "Sarah Johnson",
-    initials: "SJ",
-    type: "Sick Leave", 
-    startDate: "Jan 6, 2026", 
-    endDate: "Jan 7, 2026", 
-    days: 2,
-    status: "pending",
-    reason: "Not feeling well, need to rest",
-    appliedOn: "Jan 5, 2026"
-  },
-  { 
-    id: 2,
-    employee: "Michael Chen",
-    initials: "MC",
-    type: "Personal Leave", 
-    startDate: "Jan 10, 2026", 
-    endDate: "Jan 10, 2026", 
-    days: 1,
-    status: "pending",
-    reason: "Personal appointment",
-    appliedOn: "Jan 4, 2026"
-  },
-  { 
-    id: 3,
-    employee: "Emily Davis",
-    initials: "ED",
-    type: "Paid Leave", 
-    startDate: "Jan 15, 2026", 
-    endDate: "Jan 18, 2026", 
-    days: 4,
-    status: "pending",
-    reason: "Family vacation",
-    appliedOn: "Jan 3, 2026"
-  },
-  { 
-    id: 4,
-    employee: "John Doe",
-    initials: "JD",
-    type: "Paid Leave", 
-    startDate: "Jan 15, 2026", 
-    endDate: "Jan 15, 2026", 
-    days: 1,
-    status: "approved",
-    reason: "Personal work",
-    appliedOn: "Jan 2, 2026"
-  },
-  { 
-    id: 5,
-    employee: "Alex Thompson",
-    initials: "AT",
-    type: "Sick Leave", 
-    startDate: "Dec 28, 2025", 
-    endDate: "Dec 28, 2025", 
-    days: 1,
-    status: "approved",
-    reason: "Doctor's appointment",
-    appliedOn: "Dec 27, 2025"
-  },
-];
+interface LeaveRequest {
+  id: string;
+  employee_id: string;
+  leave_type: string;
+  start_date: string;
+  end_date: string;
+  days_requested: number;
+  status: string;
+  reason?: string;
+  created_at?: string;
+  employees?: {
+    first_name: string;
+    last_name: string;
+  };
+}
 
 const statusConfig = {
-  pending: { label: "Pending", icon: Clock, class: "bg-chart-4 text-background" },
-  approved: { label: "Approved", icon: CheckCircle, class: "bg-chart-2 text-background" },
-  rejected: { label: "Rejected", icon: XCircle, class: "bg-destructive text-destructive-foreground" },
+  PENDING: { label: "Pending", icon: Clock, class: "bg-chart-4 text-background" },
+  APPROVED: { label: "Approved", icon: CheckCircle, class: "bg-chart-2 text-background" },
+  REJECTED: { label: "Rejected", icon: XCircle, class: "bg-destructive text-destructive-foreground" },
 };
 
 const AdminLeave = () => {
   const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [filteredRequests, setFilteredRequests] = useState<LeaveRequest[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [stats, setStats] = useState({
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    onLeaveToday: 0,
+  });
 
-  const handleApprove = (id: number) => {
-    toast({
-      title: "Leave Approved",
-      description: "The leave request has been approved successfully."
+  useEffect(() => {
+    fetchLeaveRequests();
+  }, []);
+
+  useEffect(() => {
+    const filtered = leaveRequests.filter((req) => {
+      const employeeName =
+        `${req.employees?.first_name} ${req.employees?.last_name}`.toLowerCase();
+      return employeeName.includes(searchTerm.toLowerCase());
     });
+    setFilteredRequests(filtered);
+  }, [searchTerm, leaveRequests]);
+
+  const fetchLeaveRequests = async () => {
+    try {
+      setLoading(true);
+      const res = await leaveAPI.getReport();
+      const allLeaves = res.data || [];
+      setLeaveRequests(allLeaves);
+      setFilteredRequests(allLeaves);
+
+      // Calculate stats
+      setStats({
+        pending: allLeaves.filter((l: LeaveRequest) => l.status === "PENDING").length,
+        approved: allLeaves.filter((l: LeaveRequest) => l.status === "APPROVED").length,
+        rejected: allLeaves.filter((l: LeaveRequest) => l.status === "REJECTED").length,
+        onLeaveToday: 0, // Would need to check if leave dates include today
+      });
+    } catch (error) {
+      console.error("Error fetching leave requests:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleReject = (id: number) => {
-    toast({
-      title: "Leave Rejected",
-      description: "The leave request has been rejected."
-    });
+  const handleApprove = async (id: string) => {
+    try {
+      await leaveAPI.updateStatus(id, "APPROVED");
+      toast({
+        title: "Leave Approved",
+        description: "The leave request has been approved successfully.",
+      });
+      fetchLeaveRequests();
+    } catch (error) {
+      console.error("Error approving leave:", error);
+      toast({
+        title: "Error",
+        description: "Failed to approve leave request",
+        variant: "destructive",
+      });
+    }
   };
+
+  const handleReject = async (id: string) => {
+    try {
+      await leaveAPI.updateStatus(id, "REJECTED");
+      toast({
+        title: "Leave Rejected",
+        description: "The leave request has been rejected.",
+      });
+      fetchLeaveRequests();
+    } catch (error) {
+      console.error("Error rejecting leave:", error);
+      toast({
+        title: "Error",
+        description: "Failed to reject leave request",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout role="admin">
+        <div className="flex items-center justify-center h-96">
+          <Loader className="h-8 w-8 animate-spin" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout role="admin">
@@ -101,19 +133,19 @@ const AdminLeave = () => {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="border-2 border-border bg-background p-4">
-            <div className="text-2xl font-bold">5</div>
+            <div className="text-2xl font-bold">{stats.pending}</div>
             <div className="text-sm text-muted-foreground">Pending</div>
           </div>
           <div className="border-2 border-border bg-background p-4">
-            <div className="text-2xl font-bold">28</div>
-            <div className="text-sm text-muted-foreground">Approved (This Month)</div>
+            <div className="text-2xl font-bold">{stats.approved}</div>
+            <div className="text-sm text-muted-foreground">Approved</div>
           </div>
           <div className="border-2 border-border bg-background p-4">
-            <div className="text-2xl font-bold">3</div>
-            <div className="text-sm text-muted-foreground">Rejected (This Month)</div>
+            <div className="text-2xl font-bold">{stats.rejected}</div>
+            <div className="text-sm text-muted-foreground">Rejected</div>
           </div>
           <div className="border-2 border-border bg-background p-4">
-            <div className="text-2xl font-bold">4</div>
+            <div className="text-2xl font-bold">{stats.onLeaveToday}</div>
             <div className="text-sm text-muted-foreground">On Leave Today</div>
           </div>
         </div>
@@ -122,7 +154,12 @@ const AdminLeave = () => {
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search by employee name..." className="pl-10" />
+            <Input
+              placeholder="Search by employee name..."
+              className="pl-10"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
           <Button variant="outline">
             <Filter className="mr-2 h-4 w-4" />
@@ -146,64 +183,79 @@ const AdminLeave = () => {
                 </tr>
               </thead>
               <tbody>
-                {leaveRequests.map((request) => {
-                  const status = statusConfig[request.status as keyof typeof statusConfig];
-                  return (
-                    <tr key={request.id} className="border-b border-border last:border-0">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0">
-                            {request.initials}
+                {filteredRequests.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-4 text-center text-muted-foreground">
+                      No leave requests found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRequests.map((request) => {
+                    const status = statusConfig[request.status as keyof typeof statusConfig] || statusConfig.PENDING;
+                    const initials = `${request.employees?.first_name?.[0] || ""}${request.employees?.last_name?.[0] || ""}`.toUpperCase();
+                    const appliedDate = request.created_at
+                      ? new Date(request.created_at).toLocaleDateString()
+                      : "N/A";
+
+                    return (
+                      <tr key={request.id} className="border-b border-border last:border-0 hover:bg-secondary/50">
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0">
+                              {initials}
+                            </div>
+                            <div>
+                              <div className="font-medium">
+                                {request.employees?.first_name} {request.employees?.last_name}
+                              </div>
+                              <div className="text-xs text-muted-foreground">Applied: {appliedDate}</div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="font-medium">{request.employee}</div>
-                            <div className="text-xs text-muted-foreground">Applied: {request.appliedOn}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4">{request.type}</td>
-                      <td className="p-4">
-                        <div>{request.startDate}</div>
-                        {request.startDate !== request.endDate && (
-                          <div className="text-sm text-muted-foreground">to {request.endDate}</div>
-                        )}
-                      </td>
-                      <td className="p-4">{request.days}</td>
-                      <td className="p-4 max-w-[200px]">
-                        <p className="truncate text-muted-foreground">{request.reason}</p>
-                      </td>
-                      <td className="p-4">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium ${status.class}`}>
-                          <status.icon className="h-3 w-3" />
-                          {status.label}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        {request.status === "pending" ? (
-                          <div className="flex gap-2">
-                            <Button 
-                              size="sm" 
-                              variant="outline"
-                              onClick={() => handleReject(request.id)}
-                              className="w-8 h-8 p-0"
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                            <Button 
-                              size="sm"
-                              onClick={() => handleApprove(request.id)}
-                              className="w-8 h-8 p-0"
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">-</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+                        <td className="p-4">{request.leave_type}</td>
+                        <td className="p-4">
+                          <div>{request.start_date}</div>
+                          {request.start_date !== request.end_date && (
+                            <div className="text-sm text-muted-foreground">to {request.end_date}</div>
+                          )}
+                        </td>
+                        <td className="p-4">{request.days_requested}</td>
+                        <td className="p-4 max-w-[200px]">
+                          <p className="truncate text-muted-foreground">{request.reason || "N/A"}</p>
+                        </td>
+                        <td className="p-4">
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium ${status.class}`}>
+                            <status.icon className="h-3 w-3" />
+                            {status.label}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          {request.status === "PENDING" ? (
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleReject(request.id)}
+                                className="w-8 h-8 p-0"
+                              >
+                                <XCircle className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleApprove(request.id)}
+                                className="w-8 h-8 p-0"
+                              >
+                                <CheckCircle className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">-</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>

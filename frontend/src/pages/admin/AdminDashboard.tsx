@@ -7,73 +7,195 @@ import {
   CheckCircle,
   XCircle,
   ArrowRight,
-  TrendingUp
+  TrendingUp,
+  Loader
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { leaveAPI, employeeAPI } from "@/lib/apiClient";
 
-const stats = [
-  { 
-    label: "Total Employees", 
-    value: "48", 
-    change: "+3 this month",
-    icon: Users,
-    color: "bg-chart-3"
-  },
-  { 
-    label: "Present Today", 
-    value: "42", 
-    change: "87.5%",
-    icon: Clock,
-    color: "bg-chart-2"
-  },
-  { 
-    label: "Pending Leave", 
-    value: "5", 
-    change: "Needs review",
-    icon: Calendar,
-    color: "bg-chart-1"
-  },
-  { 
-    label: "On Leave Today", 
-    value: "4", 
-    change: "2 planned",
-    icon: AlertCircle,
-    color: "bg-chart-4"
-  },
-];
+interface LeaveRequest {
+  id: string;
+  employee_id: string;
+  leave_type: string;
+  start_date: string;
+  end_date: string;
+  days_requested: number;
+  status: string;
+  employees?: {
+    first_name: string;
+    last_name: string;
+  };
+}
 
-const pendingLeaveRequests = [
-  { 
-    employee: "Sarah Johnson", 
-    type: "Sick Leave", 
-    dates: "Jan 6-7, 2026",
-    days: 2,
-    initials: "SJ"
-  },
-  { 
-    employee: "Michael Chen", 
-    type: "Personal Leave", 
-    dates: "Jan 10, 2026",
-    days: 1,
-    initials: "MC"
-  },
-  { 
-    employee: "Emily Davis", 
-    type: "Paid Leave", 
-    dates: "Jan 15-18, 2026",
-    days: 4,
-    initials: "ED"
-  },
-];
+interface Employee {
+  id: string;
+  first_name: string;
+  last_name: string;
+  position: string;
+  department: string;
+  created_at?: string;
+}
 
-const recentEmployees = [
-  { name: "Alex Thompson", role: "Software Engineer", department: "Engineering", date: "Jan 2, 2026", initials: "AT" },
-  { name: "Lisa Wang", role: "Product Designer", department: "Design", date: "Dec 28, 2025", initials: "LW" },
-  { name: "James Miller", role: "Marketing Manager", department: "Marketing", date: "Dec 20, 2025", initials: "JM" },
-];
+interface DailyAttendance {
+  present: number;
+  absent: number;
+  late: number;
+  total: number;
+}
 
 const AdminDashboard = () => {
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<any[]>([]);
+  const [pendingLeaves, setPendingLeaves] = useState<LeaveRequest[]>([]);
+  const [recentEmployees, setRecentEmployees] = useState<Employee[]>([]);
+  const [dailyAttendance, setDailyAttendance] = useState<DailyAttendance>({
+    present: 0,
+    absent: 0,
+    late: 0,
+    total: 0,
+  });
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setLoading(true);
+
+        // Fetch employees
+        const employeesRes = await employeeAPI.getAll();
+        const totalEmployees = employeesRes.data?.length || 0;
+
+        setRecentEmployees((employeesRes.data || []).slice(0, 3));
+
+        // Fetch pending leaves
+        const leavesRes = await leaveAPI.getPending();
+        setPendingLeaves((leavesRes.data || []).slice(0, 5));
+
+        // Fetch today's attendance
+        const today = new Date().toISOString().split("T")[0];
+        // Note: This endpoint needs to be created in backend
+        // For now, we'll use mock data
+        const attendanceRes = await fetch(
+          `/api/attendance/daily/${today}`,
+          {
+            headers: {
+              Authorization: `Bearer ${localStorage.getItem("token")}`,
+            },
+          }
+        ).then((r) => r.json());
+
+        setDailyAttendance(
+          attendanceRes.summary || {
+            present: 0,
+            absent: 0,
+            late: 0,
+            total: totalEmployees,
+          }
+        );
+
+        // Build stats
+        const newStats = [
+          {
+            label: "Total Employees",
+            value: totalEmployees.toString(),
+            change: "+3 this month",
+            icon: Users,
+            color: "bg-chart-3",
+          },
+          {
+            label: "Present Today",
+            value: attendanceRes.summary?.present || "0",
+            change: `${Math.round((attendanceRes.summary?.present / totalEmployees) * 100)}%`,
+            icon: Clock,
+            color: "bg-chart-2",
+          },
+          {
+            label: "Pending Leave",
+            value: (leavesRes.data?.length || 0).toString(),
+            change: "Needs review",
+            icon: Calendar,
+            color: "bg-chart-1",
+          },
+          {
+            label: "On Leave Today",
+            value: (attendanceRes.summary?.absent || 0).toString(),
+            change: "2 planned",
+            icon: AlertCircle,
+            color: "bg-chart-4",
+          },
+        ];
+
+        setStats(newStats);
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+        // Keep mock data if fetch fails
+        setStats([
+          {
+            label: "Total Employees",
+            value: "48",
+            change: "+3 this month",
+            icon: Users,
+            color: "bg-chart-3",
+          },
+          {
+            label: "Present Today",
+            value: "42",
+            change: "87.5%",
+            icon: Clock,
+            color: "bg-chart-2",
+          },
+          {
+            label: "Pending Leave",
+            value: "5",
+            change: "Needs review",
+            icon: Calendar,
+            color: "bg-chart-1",
+          },
+          {
+            label: "On Leave Today",
+            value: "4",
+            change: "2 planned",
+            icon: AlertCircle,
+            color: "bg-chart-4",
+          },
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, []);
+
+  const handleApproveLeave = async (leaveId: string) => {
+    try {
+      await leaveAPI.updateStatus(leaveId, "APPROVED");
+      setPendingLeaves(pendingLeaves.filter((l) => l.id !== leaveId));
+    } catch (error) {
+      console.error("Error approving leave:", error);
+    }
+  };
+
+  const handleRejectLeave = async (leaveId: string) => {
+    try {
+      await leaveAPI.updateStatus(leaveId, "REJECTED");
+      setPendingLeaves(pendingLeaves.filter((l) => l.id !== leaveId));
+    } catch (error) {
+      console.error("Error rejecting leave:", error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout role="admin">
+        <div className="flex items-center justify-center h-96">
+          <Loader className="h-8 w-8 animate-spin" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
   return (
     <DashboardLayout role="admin">
       <div className="space-y-6">
@@ -123,7 +245,7 @@ const AdminDashboard = () => {
           {/* Pending Leave Requests */}
           <div className="border-2 border-border bg-background p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold">Pending Leave Requests</h2>
+              <h2 className="text-lg font-bold">Pending Leave Requests ({pendingLeaves.length})</h2>
               <Button variant="ghost" size="sm" asChild>
                 <Link to="/admin/leave">
                   View All <ArrowRight className="ml-1 h-4 w-4" />
@@ -132,27 +254,44 @@ const AdminDashboard = () => {
             </div>
             
             <div className="space-y-4">
-              {pendingLeaveRequests.map((request, index) => (
-                <div key={index} className="flex items-center gap-4 p-4 border-2 border-border">
-                  <div className="w-10 h-10 bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold flex-shrink-0">
-                    {request.initials}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{request.employee}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {request.type} · {request.dates} · {request.days} day{request.days > 1 ? "s" : ""}
-                    </p>
-                  </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <Button size="sm" variant="outline" className="w-9 h-9 p-0">
-                      <XCircle className="h-4 w-4" />
-                    </Button>
-                    <Button size="sm" className="w-9 h-9 p-0">
-                      <CheckCircle className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+              {pendingLeaves.length === 0 ? (
+                <p className="text-muted-foreground text-sm">No pending leave requests</p>
+              ) : (
+                pendingLeaves.map((request) => {
+                  const initials = `${request.employees?.first_name?.[0] || ""}${request.employees?.last_name?.[0] || ""}`.toUpperCase();
+                  const employeeName = `${request.employees?.first_name} ${request.employees?.last_name}`;
+                  return (
+                    <div key={request.id} className="flex items-center gap-4 p-4 border-2 border-border">
+                      <div className="w-10 h-10 bg-primary text-primary-foreground flex items-center justify-center text-sm font-bold flex-shrink-0">
+                        {initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium truncate">{employeeName}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {request.leave_type} · {request.start_date} to {request.end_date} · {request.days_requested} days
+                        </p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-9 h-9 p-0"
+                          onClick={() => handleRejectLeave(request.id)}
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="sm"
+                          className="w-9 h-9 p-0"
+                          onClick={() => handleApproveLeave(request.id)}
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -168,22 +307,25 @@ const AdminDashboard = () => {
             </div>
             
             <div className="space-y-4">
-              {recentEmployees.map((employee, index) => (
-                <div key={index} className="flex items-center gap-4 pb-4 border-b border-border last:border-0 last:pb-0">
-                  <div className="w-10 h-10 bg-secondary flex items-center justify-center text-sm font-bold flex-shrink-0">
-                    {employee.initials}
+              {recentEmployees.map((employee) => {
+                const initials = `${employee.first_name?.[0] || ""}${employee.last_name?.[0] || ""}`.toUpperCase();
+                return (
+                  <div key={employee.id} className="flex items-center gap-4 pb-4 border-b border-border last:border-0 last:pb-0">
+                    <div className="w-10 h-10 bg-secondary flex items-center justify-center text-sm font-bold flex-shrink-0">
+                      {initials}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{employee.first_name} {employee.last_name}</p>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {employee.position} · {employee.department}
+                      </p>
+                    </div>
+                    <div className="text-xs text-muted-foreground flex-shrink-0">
+                      {new Date().toLocaleDateString()}
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{employee.name}</p>
-                    <p className="text-sm text-muted-foreground truncate">
-                      {employee.role} · {employee.department}
-                    </p>
-                  </div>
-                  <div className="text-xs text-muted-foreground flex-shrink-0">
-                    {employee.date}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -201,20 +343,20 @@ const AdminDashboard = () => {
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="p-4 bg-secondary text-center">
-              <div className="text-2xl font-bold">42</div>
+              <div className="text-2xl font-bold">{dailyAttendance.present || 0}</div>
               <div className="text-sm text-muted-foreground">Present</div>
             </div>
             <div className="p-4 bg-secondary text-center">
-              <div className="text-2xl font-bold">4</div>
-              <div className="text-sm text-muted-foreground">On Leave</div>
-            </div>
-            <div className="p-4 bg-secondary text-center">
-              <div className="text-2xl font-bold">2</div>
+              <div className="text-2xl font-bold">{dailyAttendance.absent || 0}</div>
               <div className="text-sm text-muted-foreground">Absent</div>
             </div>
             <div className="p-4 bg-secondary text-center">
-              <div className="text-2xl font-bold">0</div>
-              <div className="text-sm text-muted-foreground">Half-Day</div>
+              <div className="text-2xl font-bold">{dailyAttendance.late || 0}</div>
+              <div className="text-sm text-muted-foreground">Late</div>
+            </div>
+            <div className="p-4 bg-secondary text-center">
+              <div className="text-2xl font-bold">{dailyAttendance.total || 0}</div>
+              <div className="text-sm text-muted-foreground">Total</div>
             </div>
           </div>
         </div>

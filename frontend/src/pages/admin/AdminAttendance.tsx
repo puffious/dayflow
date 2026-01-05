@@ -1,70 +1,24 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { Search, Filter, CheckCircle, XCircle, Clock, AlertCircle } from "lucide-react";
+import { Search, Filter, CheckCircle, XCircle, Clock, AlertCircle, Loader } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useEffect, useState } from "react";
+import { attendanceAPI } from "@/lib/apiClient";
 
-const attendanceData = [
-  { 
-    id: 1,
-    name: "John Doe",
-    initials: "JD",
-    department: "Engineering",
-    checkIn: "9:00 AM",
-    checkOut: "6:30 PM",
-    hours: "9h 30m",
-    status: "present"
-  },
-  { 
-    id: 2,
-    name: "Sarah Johnson",
-    initials: "SJ",
-    department: "Design",
-    checkIn: "8:45 AM",
-    checkOut: "5:45 PM",
-    hours: "9h 00m",
-    status: "present"
-  },
-  { 
-    id: 3,
-    name: "Michael Chen",
-    initials: "MC",
-    department: "Engineering",
-    checkIn: "9:15 AM",
-    checkOut: "-",
-    hours: "-",
-    status: "present"
-  },
-  { 
-    id: 4,
-    name: "Emily Davis",
-    initials: "ED",
-    department: "Marketing",
-    checkIn: "-",
-    checkOut: "-",
-    hours: "-",
-    status: "leave"
-  },
-  { 
-    id: 5,
-    name: "Alex Thompson",
-    initials: "AT",
-    department: "Engineering",
-    checkIn: "-",
-    checkOut: "-",
-    hours: "-",
-    status: "absent"
-  },
-  { 
-    id: 6,
-    name: "Lisa Wang",
-    initials: "LW",
-    department: "Design",
-    checkIn: "9:30 AM",
-    checkOut: "1:00 PM",
-    hours: "3h 30m",
-    status: "half-day"
-  },
-];
+interface AttendanceRecord {
+  id: string;
+  employee_id: string;
+  date: string;
+  check_in_time: string;
+  check_out_time?: string;
+  total_hours?: number;
+  status: string;
+  employees?: {
+    first_name: string;
+    last_name: string;
+    department: string;
+  };
+}
 
 const statusConfig = {
   present: { label: "Present", icon: CheckCircle, class: "bg-chart-2 text-background" },
@@ -74,6 +28,87 @@ const statusConfig = {
 };
 
 const AdminAttendance = () => {
+  const [loading, setLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
+  const [attendanceData, setAttendanceData] = useState<AttendanceRecord[]>([]);
+  const [filteredData, setFilteredData] = useState<AttendanceRecord[]>([]);
+  const [summary, setSummary] = useState({ present: 0, absent: 0, late: 0, total: 0 });
+  const [searchTerm, setSearchTerm] = useState("");
+
+  useEffect(() => {
+    fetchDailyAttendance();
+  }, [selectedDate]);
+
+  useEffect(() => {
+    const filtered = attendanceData.filter((record) => {
+      const employeeName =
+        `${record.employees?.first_name} ${record.employees?.last_name}`.toLowerCase();
+      return (
+        employeeName.includes(searchTerm.toLowerCase()) ||
+        record.employees?.department.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    });
+    setFilteredData(filtered);
+  }, [searchTerm, attendanceData]);
+
+  const fetchDailyAttendance = async () => {
+    try {
+      setLoading(true);
+      const res = await attendanceAPI.getDaily(selectedDate);
+      setAttendanceData(res.data?.records || []);
+      setSummary(res.data?.summary || { present: 0, absent: 0, late: 0, total: 0 });
+      setFilteredData(res.data?.records || []);
+    } catch (error) {
+      console.error("Error fetching attendance:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatTime = (timeString: string) => {
+    if (!timeString) return "-";
+    try {
+      return new Date(timeString).toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return "-";
+    }
+  };
+
+  const formatHours = (hours?: number) => {
+    if (!hours) return "-";
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    return `${h}h ${m}m`;
+  };
+
+  const getStatusFromRecord = (record: AttendanceRecord) => {
+    if (!record.check_in_time) return "absent";
+    if (!record.check_out_time) return "present";
+    if (record.total_hours && record.total_hours < 8) return "half-day";
+    return "present";
+  };
+
+  if (loading) {
+    return (
+      <DashboardLayout role="admin">
+        <div className="flex items-center justify-center h-96">
+          <Loader className="h-8 w-8 animate-spin" />
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  const displayDate = new Date(selectedDate);
+  const formattedDate = displayDate.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  });
+
   return (
     <DashboardLayout role="admin">
       <div className="space-y-6">
@@ -85,29 +120,41 @@ const AdminAttendance = () => {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="border-2 border-border bg-background p-4">
-            <div className="text-2xl font-bold">42</div>
+            <div className="text-2xl font-bold">{summary.present}</div>
             <div className="text-sm text-muted-foreground">Present Today</div>
           </div>
           <div className="border-2 border-border bg-background p-4">
-            <div className="text-2xl font-bold">4</div>
-            <div className="text-sm text-muted-foreground">On Leave</div>
-          </div>
-          <div className="border-2 border-border bg-background p-4">
-            <div className="text-2xl font-bold">2</div>
+            <div className="text-2xl font-bold">{summary.absent}</div>
             <div className="text-sm text-muted-foreground">Absent</div>
           </div>
           <div className="border-2 border-border bg-background p-4">
-            <div className="text-2xl font-bold">87.5%</div>
+            <div className="text-2xl font-bold">{summary.late}</div>
+            <div className="text-sm text-muted-foreground">Late</div>
+          </div>
+          <div className="border-2 border-border bg-background p-4">
+            <div className="text-2xl font-bold">
+              {summary.total > 0 ? Math.round((summary.present / summary.total) * 100) : 0}%
+            </div>
             <div className="text-sm text-muted-foreground">Attendance Rate</div>
           </div>
         </div>
 
         {/* Date and Filter */}
         <div className="flex flex-col sm:flex-row gap-4">
-          <Input type="date" defaultValue="2026-01-03" className="w-auto" />
+          <Input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="w-auto"
+          />
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search employees..." className="pl-10" />
+            <Input
+              placeholder="Search employees..."
+              className="pl-10"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
           <Button variant="outline">
             <Filter className="mr-2 h-4 w-4" />
@@ -118,7 +165,7 @@ const AdminAttendance = () => {
         {/* Attendance Table */}
         <div className="border-2 border-border bg-background">
           <div className="p-4 border-b-2 border-border">
-            <h2 className="font-bold">January 3, 2026 - Friday</h2>
+            <h2 className="font-bold">{formattedDate}</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -130,40 +177,47 @@ const AdminAttendance = () => {
                   <th className="text-left p-4 font-medium">Check Out</th>
                   <th className="text-left p-4 font-medium">Hours</th>
                   <th className="text-left p-4 font-medium">Status</th>
-                  <th className="text-left p-4 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {attendanceData.map((row) => {
-                  const status = statusConfig[row.status as keyof typeof statusConfig];
-                  return (
-                    <tr key={row.id} className="border-b border-border last:border-0">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0">
-                            {row.initials}
+                {filteredData.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="p-4 text-center text-muted-foreground">
+                      No attendance records found
+                    </td>
+                  </tr>
+                ) : (
+                  filteredData.map((record) => {
+                    const status = getStatusFromRecord(record);
+                    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.present;
+                    const initials = `${record.employees?.first_name?.[0] || ""}${record.employees?.last_name?.[0] || ""}`.toUpperCase();
+
+                    return (
+                      <tr key={record.id} className="border-b border-border last:border-0 hover:bg-secondary/50">
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold flex-shrink-0">
+                              {initials}
+                            </div>
+                            <span className="font-medium">
+                              {record.employees?.first_name} {record.employees?.last_name}
+                            </span>
                           </div>
-                          <span className="font-medium">{row.name}</span>
-                        </div>
-                      </td>
-                      <td className="p-4 text-muted-foreground">{row.department}</td>
-                      <td className="p-4">{row.checkIn}</td>
-                      <td className="p-4">{row.checkOut}</td>
-                      <td className="p-4">{row.hours}</td>
-                      <td className="p-4">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium ${status.class}`}>
-                          <status.icon className="h-3 w-3" />
-                          {status.label}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        <Button variant="outline" size="sm">
-                          Edit
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        </td>
+                        <td className="p-4 text-muted-foreground">{record.employees?.department || "N/A"}</td>
+                        <td className="p-4">{formatTime(record.check_in_time)}</td>
+                        <td className="p-4">{formatTime(record.check_out_time)}</td>
+                        <td className="p-4">{formatHours(record.total_hours)}</td>
+                        <td className="p-4">
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium ${config.class}`}>
+                            <config.icon className="h-3 w-3" />
+                            {config.label}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
