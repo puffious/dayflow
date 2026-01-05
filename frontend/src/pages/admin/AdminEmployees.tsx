@@ -2,6 +2,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { Search, Plus, Filter, MoreHorizontal, Mail, Loader } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useEffect, useState } from "react";
 import {
   DropdownMenu,
@@ -9,7 +10,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { employeeAPI } from "@/lib/apiClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface Employee {
   id: string;
@@ -23,12 +32,23 @@ interface Employee {
 }
 
 const AdminEmployees = () => {
+  const { toast } = useToast();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formData, setFormData] = useState({
+    first_name: "",
+    last_name: "",
+    email: "",
+    position: "",
+    department: "",
+    salary: "",
+  });
   const pageSize = 10;
 
   useEffect(() => {
@@ -63,10 +83,66 @@ const AdminEmployees = () => {
     if (confirm("Are you sure you want to deactivate this employee?")) {
       try {
         await employeeAPI.delete(id);
+        toast({
+          title: "Success",
+          description: "Employee deactivated successfully"
+        });
         fetchEmployees();
       } catch (error) {
+        toast({
+          title: "Error",
+          description: "Failed to deactivate employee",
+          variant: "destructive"
+        });
         console.error("Error deleting employee:", error);
       }
+    }
+  };
+
+  const handleAddEmployee = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.first_name || !formData.last_name || !formData.email) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await employeeAPI.create({
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        email: formData.email,
+        position: formData.position,
+        department: formData.department,
+        salary: formData.salary ? parseFloat(formData.salary) : null,
+        status: "ACTIVE"
+      });
+      toast({
+        title: "Success",
+        description: "Employee added successfully"
+      });
+      setIsDialogOpen(false);
+      setFormData({
+        first_name: "",
+        last_name: "",
+        email: "",
+        position: "",
+        department: "",
+        salary: "",
+      });
+      fetchEmployees();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.error || "Failed to add employee",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -88,7 +164,7 @@ const AdminEmployees = () => {
             <h1 className="text-2xl md:text-3xl font-bold">Employees</h1>
             <p className="text-muted-foreground">Manage your organization's employees.</p>
           </div>
-          <Button>
+          <Button onClick={() => setIsDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Employee
           </Button>
@@ -224,6 +300,92 @@ const AdminEmployees = () => {
             </Button>
           </div>
         </div>
+
+        {/* Add Employee Dialog */}
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add New Employee</DialogTitle>
+              <DialogDescription>Create a new employee record</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleAddEmployee} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="first_name">First Name *</Label>
+                  <Input
+                    id="first_name"
+                    placeholder="John"
+                    value={formData.first_name}
+                    onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="last_name">Last Name *</Label>
+                  <Input
+                    id="last_name"
+                    placeholder="Doe"
+                    value={formData.last_name}
+                    onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email *</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="john@company.com"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="position">Position</Label>
+                <Input
+                  id="position"
+                  placeholder="Software Engineer"
+                  value={formData.position}
+                  onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="department">Department</Label>
+                <Input
+                  id="department"
+                  placeholder="Engineering"
+                  value={formData.department}
+                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="salary">Salary</Label>
+                <Input
+                  id="salary"
+                  type="number"
+                  placeholder="50000"
+                  value={formData.salary}
+                  onChange={(e) => setFormData({ ...formData, salary: e.target.value })}
+                />
+              </div>
+              <div className="flex gap-3 justify-end pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsDialogOpen(false)}
+                  disabled={isSubmitting}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? "Adding..." : "Add Employee"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

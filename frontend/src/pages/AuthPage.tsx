@@ -5,11 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/context/AuthContext";
 
 const AuthPage = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { login, signup } = useAuth();
   const isSignUp = searchParams.get("mode") === "signup";
   
   const [showPassword, setShowPassword] = useState(false);
@@ -25,23 +27,33 @@ const AuthPage = () => {
     e.preventDefault();
     setIsLoading(true);
     
-    // Simulate authentication - will be replaced with Supabase
-    setTimeout(() => {
-      setIsLoading(false);
-      toast({
-        title: isSignUp ? "Account created!" : "Welcome back!",
-        description: isSignUp 
-          ? "Your account has been created successfully." 
-          : "You have been signed in successfully."
-      });
-      
-      // Navigate to appropriate dashboard based on role
-      if (formData.role === "admin") {
-        navigate("/admin/dashboard");
+    try {
+      if (isSignUp) {
+        const [firstName, ...lastNameParts] = formData.fullName.split(' ');
+        const lastName = lastNameParts.join(' ') || 'User';
+        await signup(formData.email, formData.password, firstName, lastName);
+        toast({
+          title: "Account created!",
+          description: "Your account has been created successfully."
+        });
+        navigate(formData.role === "admin" ? "/admin/dashboard" : "/employee/dashboard");
       } else {
+        await login(formData.email, formData.password);
+        toast({
+          title: "Welcome back!",
+          description: "You have been signed in successfully."
+        });
         navigate("/employee/dashboard");
       }
-    }, 1000);
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Authentication failed",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
